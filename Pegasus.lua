@@ -1,7 +1,7 @@
 
 --==================================================
--- PEGASUS HUB V6
--- Generic Voice Game | ALPHA
+-- PEGASUS HUB V7
+-- Generic Voice Game
 --==================================================
 
 local Players = game:GetService("Players")
@@ -77,6 +77,11 @@ local flyVelocity = nil
 local flyGyro = nil
 local velocidadeOriginal = nil
 
+local autoTreasure = false
+local bauCompleto = false
+local buscandoBau = false
+local bausCapturados = 0
+local ultimoAlvo = nil
 local peixesCapturados = 0
 local eventosAFK = 0
 
@@ -121,6 +126,8 @@ local function clique()
 end
 
 local function resetarControle()
+    ultimoAlvo = nil
+    buscandoBau = false
     ultimoPeixeY = nil
     ultimaBarraY = nil
 
@@ -180,52 +187,42 @@ end
 
 local function encontrarElementos()
     local captura = obterCaptura()
-
-    if not captura then
-        return nil, nil
+    if not captura then return end
+    local peixe, bau, barra, progresso
+    for _, obj in ipairs(captura:GetDescendants()) do
+        if obj:IsA("ImageLabel") then
+            if obj.Image == Config.ICONES.peixe then peixe = obj.Parent end
+            if obj.Image == Config.ICONES.bau then bau = obj.Parent end
+        end
     end
-
-    local peixeImagem = nil
-    local barra = nil
-
-    for _, objeto in ipairs(captura:GetDescendants()) do
-        if objeto:IsA("ImageLabel") then
-            if objeto.Image == Config.ICONES.peixe then
-                peixeImagem = objeto
-                break
+    if not peixe then return end
+    local campo = peixe.Parent
+    for _, obj in ipairs(campo:GetChildren()) do
+        if obj:IsA("Frame") and obj.ZIndex == 2 and obj.AnchorPoint.Y == 1
+            and obj.Size.X.Scale == 1 and obj.Size.Y.Scale > 0 then
+            barra = obj
+            break
+        end
+    end
+    for _, obj in ipairs(captura:GetDescendants()) do
+        if obj:IsA("Frame") and obj.Size.X.Offset == 16 and obj.Size.Y.Offset == 324 then
+            for _, filho in ipairs(obj:GetChildren()) do
+                if filho:IsA("Frame") and filho.AnchorPoint.Y == 1 and filho.Size.X.Scale == 1 then
+                    progresso = filho.Size.Y.Scale
+                    break
+                end
             end
         end
     end
-
-    if not peixeImagem then
-        return nil, nil
-    end
-
-    local marcadorPeixe = peixeImagem.Parent
-    local campo = marcadorPeixe.Parent
-
-    if not campo then
-        return nil, nil
-    end
-
-    for _, objeto in ipairs(campo:GetChildren()) do
-        if objeto:IsA("GuiObject")
-            and objeto ~= marcadorPeixe then
-
-            local tamanho = objeto.Size
-
-            if objeto.AnchorPoint.Y >= 0.9
-                and tamanho.X.Scale >= 0.8
-                and tamanho.Y.Scale >= 0.20
-                and tamanho.Y.Scale <= 0.30 then
-
-                barra = objeto
-                break
-            end
+    if bau and bau.Visible then
+        local escala = bau:FindFirstChildOfClass("UIScale")
+        if escala and escala.Scale < 0.98 and os.clock() - inicioCaptura > 0.7 then
+            bauCompleto = true
         end
+    else
+        bau = nil
     end
-
-    return marcadorPeixe, barra
+    return peixe, barra, bau, progresso
 end
 
 --==================================================
@@ -242,15 +239,32 @@ local function controlarLuta()
 
     ultimoControle = agora
 
-    local peixe, barra = encontrarElementos()
+    local peixe, barra, bau, progresso = encontrarElementos()
 
     if not peixe or not barra then
         resetarControle()
         return
     end
 
-    local peixeY = peixe.AbsolutePosition.Y
-        + peixe.AbsoluteSize.Y / 2
+    local peixeCentro = peixe.AbsolutePosition.Y + peixe.AbsoluteSize.Y / 2
+    local alvo = peixe
+    buscandoBau = false
+    if autoTreasure and bau and not bauCompleto then
+        local bauCentro = bau.AbsolutePosition.Y + bau.AbsoluteSize.Y / 2
+        local juntos = math.abs(bauCentro - peixeCentro) < barra.AbsoluteSize.Y * 0.85
+        if juntos or (progresso and progresso >= (ultimoAlvo == bau and 0.28 or 0.68)) then
+            alvo = bau
+            buscandoBau = true
+        end
+    end
+    local peixeY = alvo.AbsolutePosition.Y + alvo.AbsoluteSize.Y / 2
+    if buscandoBau and math.abs(peixeY - peixeCentro) < barra.AbsoluteSize.Y * 0.85 then
+        peixeY = (peixeY + peixeCentro) / 2
+    end
+    if ultimoAlvo ~= alvo then
+        ultimoAlvo = alvo
+        ultimoPeixeY = nil
+    end
 
     local barraY = barra.AbsolutePosition.Y
         + barra.AbsoluteSize.Y / 2
@@ -380,6 +394,8 @@ Evento.OnClientEvent:Connect(function(acao, dados)
 
     elseif acao == "Luta" then
 
+        bauCompleto = false
+
         resetarControle()
 
         estado = "luta"
@@ -390,11 +406,14 @@ Evento.OnClientEvent:Connect(function(acao, dados)
         resetarControle()
 
         peixesCapturados += 1
+        if bauCompleto then bausCapturados += 1 end
+        bauCompleto = false
 
         estado = "mostrando"
         fimResultado = os.clock() + TEMPO_RESULTADO
 
     elseif acao == "Escapou" then
+        bauCompleto = false
 
         resetarControle()
         estado = "espera"
@@ -737,7 +756,7 @@ local subtitulo = Instance.new("TextLabel")
 subtitulo.Size = UDim2.new(1, -70, 0, 22)
 subtitulo.Position = UDim2.fromOffset(17, 36)
 subtitulo.BackgroundTransparency = 1
-subtitulo.Text = "Generic Voice Game | ALPHA"
+subtitulo.Text = "Generic Voice Game"
 subtitulo.TextColor3 = CORES.cinza
 subtitulo.Font = Enum.Font.Gotham
 subtitulo.TextSize = 13
@@ -943,19 +962,9 @@ end
 
 titulo(abaGeneral, "General")
 
-descricao(
-    abaGeneral,
-    "Funcoes gerais independentes da pesca."
-)
-
 local botaoAFK = criarBotao(
     abaGeneral,
     "Anti-AFK: OFF"
-)
-
-local statusAFK = descricao(
-    abaGeneral,
-    "Anti-AFK desativado."
 )
 
 local contadorAFK = titulo(
@@ -981,15 +990,18 @@ atualizarBotao(botaoAFK, "Anti-AFK", antiAFK)
 
 titulo(abaFishing, "Auto Fishing")
 
-descricao(
-    abaFishing,
-    "Pesca automatica com controlador de captura V4."
-)
-
 local botaoPesca = criarBotao(
     abaFishing,
     "Auto Fishing [K]: OFF"
 )
+
+local botaoBau = criarBotao(abaFishing, "Auto Treasure: OFF")
+atualizarBotao(botaoBau, "Auto Treasure", autoTreasure)
+botaoBau.MouseButton1Click:Connect(function()
+    autoTreasure = not autoTreasure
+    atualizarBotao(botaoBau, "Auto Treasure", autoTreasure)
+end)
+local contadorBaus = titulo(abaFishing, "Baus capturados: 0")
 
 local statusPesca = titulo(
     abaFishing,
@@ -1003,6 +1015,7 @@ local contadorPeixes = titulo(
 
 local function alternarPesca()
     ligado = not ligado
+    bauCompleto = false
 
     resetarControle()
 
@@ -1284,7 +1297,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V6 | RightShift"
+rodape.Text = "PEGASUS HUB V7 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1386,20 +1399,11 @@ end)
 task.spawn(function()
     while gui.Parent do
 
-        if antiAFK then
-
-            statusAFK.Text =
-                "Anti-AFK ativo, independente da pesca."
-
-        else
-
-            statusAFK.Text =
-                "Anti-AFK desativado."
-        end
 
         contadorAFK.Text =
             "Eventos Anti-AFK: " .. eventosAFK
 
+        contadorBaus.Text = "Baus capturados: " .. bausCapturados
         contadorPeixes.Text =
             "Peixes capturados: " .. peixesCapturados
 
@@ -1413,7 +1417,7 @@ task.spawn(function()
             else
 
                 statusPesca.Text = "Status: "
-                    .. (nomesEstados[estado] or estado)
+                    .. (estado == "luta" and buscandoBau and "Capturando bau" or nomesEstados[estado] or estado)
             end
 
         else
@@ -1453,7 +1457,13 @@ RunService.Heartbeat:Connect(function()
 
     if estado == "luta" then
 
-        controlarLuta()
+        if not obterCaptura() and agora - inicioCaptura > 3 then
+            resetarControle()
+            estado = "mostrando"
+            fimResultado = agora + TEMPO_RESULTADO
+        else
+            controlarLuta()
+        end
 
     elseif estado == "livre" then
 
@@ -1484,8 +1494,8 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V6")
-print("Generic Voice Game | ALPHA")
+print("PEGASUS HUB V7")
+print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
 print("F - Fly")
