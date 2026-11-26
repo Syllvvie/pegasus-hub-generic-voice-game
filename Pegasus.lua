@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V9.2
+-- PEGASUS HUB V9.3
 -- Generic Voice Game
 --==================================================
 
@@ -581,6 +581,10 @@ local function cicloVenda(manual)
         if not prompt or not conversa:IsA("BasePart") then error("Prompt do Juca nao encontrado") end
         local antes = Pedido:InvokeServer("Dados")
         local saldo = tonumber(antes and antes.moedas)
+        if not saldo then error("Saldo inicial indisponivel") end
+        if type(antes.peixes) ~= "table" or #antes.peixes ~= quantidade then
+            error("Cesto mudou antes da venda")
+        end
         origem = root.CFrame
         resetarControle()
         varaSalva = pegarVara()
@@ -613,18 +617,39 @@ local function cicloVenda(manual)
         task.wait(0.25)
         statusVenda = "Solicitando proposta"
         clicarVenda(opcao, "Vender o inventário de peixes")
-        local confirmar = aguardarVenda(function() return botaoVendaVisivel("Vender tudo") end, 8, "Proposta nao apareceu")
+        local confirmar = aguardarVenda(function()
+            local b = botaoVendaVisivel("Vender tudo")
+            if b and botaoVendaVisivel("Agora não") and not botaoVendaVisivel("Vender o inventário de peixes") then
+                return b
+            end
+        end, 8, "Proposta nao apareceu")
+        statusVenda = "Aguardando confirmacao"
+        task.wait(0.8)
+        if botaoVendaVisivel("Vender tudo") ~= confirmar or not botaoVendaVisivel("Agora não") then
+            error("Menu de confirmacao mudou")
+        end
         statusVenda = "Confirmando venda"
         clicarVenda(confirmar, "Vender tudo")
+        statusVenda = "Verificando saldo e cesto"
+        local verificacoes = 0
         local depois = aguardarVenda(function()
             local dados = Pedido:InvokeServer("Dados")
             if type(dados) == "table" and type(dados.peixes) == "table" then
                 cestoAtual = #dados.peixes
-                if cestoAtual == 0 then return dados end
+                local novoSaldo = tonumber(dados.moedas)
+                if cestoAtual == 0 and novoSaldo and novoSaldo > saldo then
+                    verificacoes += 1
+                    if verificacoes >= 2 then return dados end
+                else
+                    verificacoes = 0
+                end
+            else
+                verificacoes = 0
             end
-        end, 10, "Cesto nao esvaziado apos confirmar")
+            task.wait(0.5)
+        end, 15, "Venda nao confirmada: saldo ou cesto sem atualizacao")
         vendas += 1
-        if saldo and tonumber(depois.moedas) then totalVendido += math.max(0, depois.moedas - saldo) end
+        totalVendido += tonumber(depois.moedas) - saldo
         local fechar = botaoVendaVisivel("Tchau!")
         if fechar then clicarVenda(fechar, "Tchau!") end
         statusVenda = "Venda concluida"
@@ -1548,7 +1573,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V9.2 | RightShift"
+rodape.Text = "PEGASUS HUB V9.3 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1659,7 +1684,9 @@ task.spawn(function()
         contadorPeixes.Text =
             "Peixes capturados: " .. peixesCapturados
 
-        if ligado then
+        if vendendo then
+            statusPesca.Text = "Status: Vendendo inventario"
+        elseif ligado then
 
             if not pegarVara() then
 
@@ -1769,7 +1796,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V9.2")
+print("PEGASUS HUB V9.3")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
