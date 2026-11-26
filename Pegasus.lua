@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V9.3
+-- PEGASUS HUB V9.4
 -- Generic Voice Game
 --==================================================
 
@@ -580,9 +580,8 @@ local function cicloVenda(manual)
         local prompt = conversa and conversa:FindFirstChildOfClass("ProximityPrompt")
         if not prompt or not conversa:IsA("BasePart") then error("Prompt do Juca nao encontrado") end
         local antes = Pedido:InvokeServer("Dados")
-        local saldo = tonumber(antes and antes.moedas)
-        if not saldo then error("Saldo inicial indisponivel") end
-        if type(antes.peixes) ~= "table" or #antes.peixes ~= quantidade then
+        local saldo = type(antes) == "table" and tonumber(antes.moedas) or nil
+        if type(antes) ~= "table" or type(antes.peixes) ~= "table" or #antes.peixes ~= quantidade then
             error("Cesto mudou antes da venda")
         end
         origem = root.CFrame
@@ -636,8 +635,7 @@ local function cicloVenda(manual)
             local dados = Pedido:InvokeServer("Dados")
             if type(dados) == "table" and type(dados.peixes) == "table" then
                 cestoAtual = #dados.peixes
-                local novoSaldo = tonumber(dados.moedas)
-                if cestoAtual == 0 and novoSaldo and novoSaldo > saldo then
+                if cestoAtual == 0 then
                     verificacoes += 1
                     if verificacoes >= 2 then return dados end
                 else
@@ -647,9 +645,14 @@ local function cicloVenda(manual)
                 verificacoes = 0
             end
             task.wait(0.5)
-        end, 15, "Venda nao confirmada: saldo ou cesto sem atualizacao")
+        end, 15, "Venda nao confirmada: cesto nao esvaziado")
         vendas += 1
-        totalVendido += tonumber(depois.moedas) - saldo
+        local saldoFinal = tonumber(depois.moedas)
+        if saldo and saldoFinal and saldoFinal > saldo then
+            totalVendido += saldoFinal - saldo
+        else
+            warn("[PEGASUS] Venda confirmada pelo cesto; valor recebido indisponivel")
+        end
         local fechar = botaoVendaVisivel("Tchau!")
         if fechar then clicarVenda(fechar, "Tchau!") end
         statusVenda = "Venda concluida"
@@ -1573,7 +1576,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V9.3 | RightShift"
+rodape.Text = "PEGASUS HUB V9.4 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1796,7 +1799,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V9.3")
+print("PEGASUS HUB V9.4")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
