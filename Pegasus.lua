@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V9.0
+-- PEGASUS HUB V9.1
 -- Generic Voice Game
 --==================================================
 
@@ -84,7 +84,6 @@ local velocidadeOriginal = nil
 local autoSell = false
 local vendendo = false
 local vendaManual = false
-local vendaRemota = false
 local cestoAtual = nil
 local vendas = 0
 local totalVendido = 0
@@ -540,19 +539,23 @@ local function aguardarVenda(fn, segundos, erro)
 end
 local function clicarVenda(botao, esperado)
     if not botao or botaoVendaVisivel(esperado) ~= botao then error("Botao incorreto: " .. esperado) end
-    -- Do not fall back to screen coordinates: they selected the wrong option.
-    if type(getconnections) ~= "function" then error("Executor sem getconnections; venda cancelada") end
-    local conexoes = getconnections(botao.Activated)
-    local executadas = 0
-    for _, conexao in ipairs(conexoes) do
-        if conexao.Enabled ~= false and type(conexao.Function) == "function" then
-            local callback = conexao.Function
-            task.spawn(callback)
-            executadas += 1
-        end
+    local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
+    -- PescaTelas uses IgnoreGuiInset; use absolute screen coordinates.
+    local x, y = math.floor(pos.X + 0.5), math.floor(pos.Y + 0.5)
+    local objetos = PlayerGui:GetGuiObjectsAtPosition(x, y)
+    local primeiro
+    for _, objeto in ipairs(objetos) do
+        if objeto:IsA("GuiButton") then primeiro = objeto; break end
+        local pai = objeto:FindFirstAncestorWhichIsA("GuiButton")
+        if pai then primeiro = pai; break end
     end
-    if executadas == 0 then error("Nenhum callback Activated acessivel: " .. esperado) end
-    print("[PEGASUS] Activated: " .. esperado .. " ordem " .. tostring(botao.LayoutOrder))
+    if primeiro ~= botao then error("Clique bloqueado ou alvo incorreto: " .. esperado) end
+    VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    task.wait(0.15)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+    task.wait(0.12)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    print("[PEGASUS] Clique: " .. esperado .. " em " .. x .. "," .. y)
 end
 local function cicloVenda(manual)
     vendaManual = manual == true
@@ -567,22 +570,6 @@ local function cicloVenda(manual)
             return
         end
         if not manual and not autoSell then return end
-        if vendaRemota then
-            statusVenda = "Tentando venda remota"
-            local total = Pedido:InvokeServer("Total")
-            if type(total) ~= "table" or total.erro or not total.quantos or total.quantos == 0 then
-                error("Cotacao remota recusada: " .. tostring(type(total) == "table" and total.erro or total))
-            end
-            local resultado = Pedido:InvokeServer("VenderTudo")
-            if type(resultado) ~= "table" or resultado.erro then
-                error("Venda remota recusada: " .. tostring(type(resultado) == "table" and resultado.erro or resultado))
-            end
-            if consultarCesto() ~= 0 then error("Cesto nao esvaziado") end
-            vendas += 1
-            totalVendido += tonumber(resultado.valor) or 0
-            statusVenda = "Venda remota concluida"
-            return
-        end
         if not root or not humanoid or humanoid.Health <= 0 or flyAtivo then error("Personagem indisponivel ou Fly ativo") end
         local barraca = workspace:FindFirstChild("BarracaDePesca")
         local conversa = barraca and barraca:FindFirstChild("Conversa")
@@ -1219,13 +1206,6 @@ botaoVenda.MouseButton1Click:Connect(function()
     proximaConsulta = 0
     atualizarBotao(botaoVenda, "Auto Sell", autoSell)
 end)
-local botaoRemoto = criarBotao(abaFishing, "Remote Sell: OFF")
-atualizarBotao(botaoRemoto, "Remote Sell", vendaRemota)
-botaoRemoto.MouseButton1Click:Connect(function()
-    if vendendo then return end
-    vendaRemota = not vendaRemota
-    atualizarBotao(botaoRemoto, "Remote Sell", vendaRemota)
-end)
 local botaoSell = criarBotao(abaFishing, "Sell Inventory")
 botaoSell.MouseButton1Click:Connect(function()
     if vendendo then return end
@@ -1564,7 +1544,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V9.0 | RightShift"
+rodape.Text = "PEGASUS HUB V9.1 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1785,7 +1765,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V9.0")
+print("PEGASUS HUB V9.1")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
