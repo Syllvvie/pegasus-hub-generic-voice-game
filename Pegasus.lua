@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V9.5
+-- PEGASUS HUB V9.7
 -- Generic Voice Game
 --==================================================
 
@@ -46,7 +46,7 @@ local Locations = {
         Nome = "Topo Escada Espiral",
         Posicao = Vector3.new(170, 5100, 5)
     },
-    { Nome = "Lago", Posicao = Vector3.new(94.81633758544922, 3.3300111293792725, 4.651993274688721) }
+    { Nome = "Lago", Posicao = Vector3.new(-0.885, 3.33, -87.701) }
 }
 
 --==================================================
@@ -1268,20 +1268,6 @@ botaoSalvarPesca.MouseButton1Click:Connect(function()
     labelLocalPesca.Text = "Local de pesca: Salvo"
 end)
 local labelCesto = titulo(abaFishing, "Cesto: --/" .. Config.MAXIMO_NO_CESTO)
-local labelVenda = titulo(abaFishing, "Vendas: 0 | Moedas: 0")
-local labelStatusVenda = titulo(abaFishing, "Auto Sell: Desativado")
-local contadorBaus = titulo(abaFishing, "Baus capturados: 0")
-
-local statusPesca = titulo(
-    abaFishing,
-    "Status: Desativado"
-)
-
-local contadorPeixes = titulo(
-    abaFishing,
-    "Peixes capturados: 0"
-)
-
 local function alternarPesca()
     if vendendo then return end
     if not ligado then
@@ -1296,7 +1282,7 @@ local function alternarPesca()
                 end
             end
         end
-        if not vara then statusPesca.Text = "Status: Nenhuma vara encontrada"; return end
+        if not vara then warn("[PEGASUS] Nenhuma vara encontrada"); return end
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
         root.CFrame = fishingLocation
@@ -1585,7 +1571,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V9.5 | RightShift"
+rodape.Text = "PEGASUS HUB V9.7 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1690,33 +1676,6 @@ task.spawn(function()
 
 
         labelCesto.Text = "Cesto: " .. (cestoAtual or "--") .. "/" .. Config.MAXIMO_NO_CESTO
-        labelVenda.Text = "Vendas: " .. vendas .. " | Moedas: " .. totalVendido
-        labelStatusVenda.Text = "Auto Sell: " .. ((autoSell or vendendo or vendaManual or statusVenda ~= "Aguardando consulta") and statusVenda or "Desativado")
-        contadorBaus.Text = "Baus capturados: " .. bausCapturados
-        contadorPeixes.Text =
-            "Peixes capturados: " .. peixesCapturados
-
-        if vendendo then
-            statusPesca.Text = "Status: Vendendo inventario"
-        elseif ligado then
-
-            if not pegarVara() then
-
-                statusPesca.Text =
-                    "Status: Equipe uma vara"
-
-            else
-
-                statusPesca.Text = "Status: "
-                    .. (estado == "luta" and buscandoBau and "Capturando bau" or nomesEstados[estado] or estado)
-            end
-
-        else
-
-            statusPesca.Text =
-                "Status: Desativado"
-        end
-
         atualizarBotao(
             botaoFly,
             "Fly [F]",
@@ -1808,7 +1767,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V9.5")
+print("PEGASUS HUB V9.7")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
