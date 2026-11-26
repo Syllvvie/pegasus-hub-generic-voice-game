@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V9.1
+-- PEGASUS HUB V9.2
 -- Generic Voice Game
 --==================================================
 
@@ -540,7 +540,7 @@ end
 local function clicarVenda(botao, esperado)
     if not botao or botaoVendaVisivel(esperado) ~= botao then error("Botao incorreto: " .. esperado) end
     local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
-    -- PescaTelas uses IgnoreGuiInset; use absolute screen coordinates.
+    -- Hit testing uses GUI coordinates; input may use the inset-adjusted origin.
     local x, y = math.floor(pos.X + 0.5), math.floor(pos.Y + 0.5)
     local objetos = PlayerGui:GetGuiObjectsAtPosition(x, y)
     local primeiro
@@ -550,12 +550,16 @@ local function clicarVenda(botao, esperado)
         if pai then primeiro = pai; break end
     end
     if primeiro ~= botao then error("Clique bloqueado ou alvo incorreto: " .. esperado) end
-    VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    local inset = GuiService:GetGuiInset()
+    local ix = math.floor(x + inset.X + 0.5)
+    local iy = math.floor(y + inset.Y + 0.5)
+    print(string.format("[PEGASUS] %s | GUI %d,%d | inset %s | entrada %d,%d", esperado, x, y, tostring(inset), ix, iy))
+    VirtualInputManager:SendMouseMoveEvent(ix, iy, game)
     task.wait(0.15)
-    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+    if botaoVendaVisivel(esperado) ~= botao then error("Menu mudou antes do clique") end
+    VirtualInputManager:SendMouseButtonEvent(ix, iy, 0, true, game, 0)
     task.wait(0.12)
-    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    print("[PEGASUS] Clique: " .. esperado .. " em " .. x .. "," .. y)
+    VirtualInputManager:SendMouseButtonEvent(ix, iy, 0, false, game, 0)
 end
 local function cicloVenda(manual)
     vendaManual = manual == true
@@ -1544,7 +1548,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V9.1 | RightShift"
+rodape.Text = "PEGASUS HUB V9.2 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1765,7 +1769,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V9.1")
+print("PEGASUS HUB V9.2")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
