@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.3
+-- PEGASUS HUB V8.4
 -- Generic Voice Game
 --==================================================
 
@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local VirtualUser = game:GetService("VirtualUser")
+local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 
 local Player = Players.LocalPlayer
@@ -529,7 +530,13 @@ local function aguardarVenda(fn, segundos, erro)
     error(erro)
 end
 local function clicarVenda(botao)
+    if not botao or not visivel(botao) then error("Botao indisponivel") end
     local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
+    local tela = botao:FindFirstAncestorOfClass("ScreenGui")
+    local inset = GuiService:GetGuiInset()
+    if tela and tela.IgnoreGuiInset then
+        pos = pos - inset
+    end
     VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
     task.wait(0.12)
     VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
@@ -1482,7 +1489,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V8.3 | RightShift"
+rodape.Text = "PEGASUS HUB V8.4 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1658,7 +1665,7 @@ RunService.Heartbeat:Connect(function()
     elseif estado == "livre" then
 
         if agora - ultimaPesca >= TEMPO_ENTRE_PESCAS then
-            if autoSell and agora >= proximaConsulta then
+            if autoSell and agora >= proximaConsulta and (cestoAtual == nil or cestoAtual >= Config.MAXIMO_NO_CESTO) then
                 vendendo = true
                 task.spawn(cicloVenda)
             else
@@ -1686,10 +1693,24 @@ end)
 -- INICIALIZACAO
 --==================================================
 
+-- Atualiza o cesto independentemente do Auto Sell.
+task.spawn(function()
+    while gui.Parent do
+        if not vendendo then
+            local ok, motivo = pcall(consultarCesto)
+            if not ok then
+                cestoAtual = nil
+                warn("[PEGASUS] Consulta cesto: " .. tostring(motivo))
+            end
+        end
+        task.wait(5)
+    end
+end)
+
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V8.3")
+print("PEGASUS HUB V8.4")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
