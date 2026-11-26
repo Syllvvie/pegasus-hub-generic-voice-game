@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.1
+-- PEGASUS HUB V8.2
 -- Generic Voice Game
 --==================================================
 
@@ -501,28 +501,40 @@ local function consultarCesto()
     return cestoAtual
 end
 
-local function abrirDialogoVenda(conversa)
-    local prompt = conversa:FindFirstChildOfClass("ProximityPrompt")
-    if not prompt then error("ProximityPrompt ausente") end
-    if Player:GetAttribute("_conversa") then error("Outro dialogo aberto") end
-    local tecla = prompt.KeyboardKeyCode
-    local ok, motivo = pcall(function()
-        VirtualInputManager:SendKeyEvent(true, tecla, false, game)
-        task.wait(prompt.HoldDuration + 0.35)
-    end)
-    pcall(function() VirtualInputManager:SendKeyEvent(false, tecla, false, game) end)
-    if not ok then error(motivo) end
-    local limite = os.clock() + 5
-    repeat
-        if Player:GetAttribute("_conversa") then return end
-        task.wait(0.1)
-    until os.clock() >= limite or not autoSell or not ligado
-    error("Dialogo do Juca nao abriu")
+local function visivel(obj)
+    while obj and obj ~= PlayerGui do
+        if obj:IsA("GuiObject") and not obj.Visible then return false end
+        if obj:IsA("ScreenGui") and not obj.Enabled then return false end
+        obj = obj.Parent
+    end
+    return obj == PlayerGui
 end
-
+local function botaoVendaVisivel(texto)
+    local tela = PlayerGui:FindFirstChild("PescaTelas")
+    if not tela then return nil end
+    for _, obj in ipairs(tela:GetDescendants()) do
+        if obj:IsA("TextButton") and obj.Text == texto and visivel(obj) and obj.AbsoluteSize.X > 0 then return obj end
+    end
+end
+local function aguardarVenda(fn, segundos, erro)
+    local limite = os.clock() + segundos
+    repeat
+        if not autoSell or not ligado then error("Venda cancelada") end
+        local resultado = fn()
+        if resultado then return resultado end
+        task.wait(0.15)
+    until os.clock() >= limite
+    error(erro)
+end
+local function clicarVenda(botao)
+    local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
+    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+    task.wait(0.12)
+    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+end
 local function cicloVenda()
     local char, humanoid, root = obterPersonagem()
-    local origem = nil
+    local origem, hub, hubVisivel
     local ok, motivo = pcall(function()
         statusVenda = "Verificando cesto"
         if consultarCesto() < Config.MAXIMO_NO_CESTO then
@@ -530,43 +542,53 @@ local function cicloVenda()
             return
         end
         if not autoSell or not ligado then return end
-        if not root or not humanoid or humanoid.Health <= 0 or flyAtivo then
-            error("Personagem indisponivel ou Fly ativo")
-        end
+        if not root or not humanoid or humanoid.Health <= 0 or flyAtivo then error("Personagem indisponivel ou Fly ativo") end
         local barraca = workspace:FindFirstChild("BarracaDePesca")
         local conversa = barraca and barraca:FindFirstChild("Conversa")
-        if not conversa or not conversa:IsA("BasePart") then error("Conversa do Juca nao encontrada") end
+        local prompt = conversa and conversa:FindFirstChildOfClass("ProximityPrompt")
+        if not prompt or not conversa:IsA("BasePart") then error("Prompt do Juca nao encontrado") end
+        local antes = Pedido:InvokeServer("Dados")
+        local saldo = tonumber(antes and antes.moedas)
         origem = root.CFrame
-        statusVenda = "Indo ao Juca"
         resetarControle()
+        statusVenda = "Indo ao Juca"
         root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
         root.CFrame = conversa.CFrame * CFrame.new(0, 0, -4) + Vector3.new(0, 2, 0)
-        task.wait(1)
-        if not autoSell or not ligado then return end
-        if Player.Character ~= char or humanoid.Health <= 0 or (root.Position-conversa.Position).Magnitude > 16 then
-            error("Nao chegou ao vendedor")
+        task.wait(1.5)
+        aguardarVenda(function()
+            return Player.Character == char and humanoid.Health > 0 and (root.Position-conversa.Position).Magnitude <= prompt.MaxActivationDistance
+        end, 4, "Fora do alcance do Juca")
+        statusVenda = "Iniciando conversa"
+        if not botaoVendaVisivel("Vender o inventário de peixes") then
+            aguardarVenda(function() return prompt.Enabled end, 3, "Prompt desabilitado")
+            VirtualInputManager:SendKeyEvent(true, prompt.KeyboardKeyCode, false, game)
+            task.wait(math.max(0.2, prompt.HoldDuration + 0.15))
+            VirtualInputManager:SendKeyEvent(false, prompt.KeyboardKeyCode, false, game)
         end
-        statusVenda = "Abrindo dialogo do Juca"
-        abrirDialogoVenda(conversa)
-        if not autoSell or not ligado then return end
-        statusVenda = "Vendendo inventario"
-        local total = Pedido:InvokeServer("Total")
-        if type(total) ~= "table" or total.erro or (tonumber(total.quantos) or 0) <= 0 then error("Cotacao indisponivel") end
-        if not autoSell or not ligado then return end
-        local resposta = Pedido:InvokeServer("VenderTudo")
-        if type(resposta) ~= "table" or resposta.erro then error("Venda recusada") end
+        local opcao = aguardarVenda(function() return botaoVendaVisivel("Vender o inventário de peixes") end, 8, "Menu do Juca nao abriu")
+        hub = PlayerGui:FindFirstChild("PEGASUS_HUB")
+        if hub then hubVisivel = hub.Enabled; hub.Enabled = false end
+        statusVenda = "Solicitando proposta"
+        clicarVenda(opcao)
+        local confirmar = aguardarVenda(function() return botaoVendaVisivel("Vender tudo") end, 8, "Proposta nao apareceu")
         statusVenda = "Confirmando venda"
-        local confirmado = false
-        for i = 1, 4 do
-            task.wait(0.6)
-            if consultarCesto() == 0 then confirmado = true break end
-        end
-        if not confirmado then error("Cesto nao esvaziado") end
+        clicarVenda(confirmar)
+        local depois = aguardarVenda(function()
+            local dados = Pedido:InvokeServer("Dados")
+            if type(dados) == "table" and type(dados.peixes) == "table" then
+                cestoAtual = #dados.peixes
+                if cestoAtual == 0 then return dados end
+            end
+        end, 10, "Cesto nao esvaziado apos confirmar")
         vendas += 1
-        totalVendido += tonumber(resposta.valor) or 0
+        if saldo and tonumber(depois.moedas) then totalVendido += math.max(0, depois.moedas - saldo) end
+        local fechar = botaoVendaVisivel("Tchau!")
+        if fechar then clicarVenda(fechar) end
         statusVenda = "Venda concluida"
     end)
-    if origem and Player.Character == char and root.Parent and humanoid and humanoid.Health > 0 then
+    if hub and hub.Parent then hub.Enabled = hubVisivel end
+    if origem and Player.Character == char and root.Parent and humanoid.Health > 0 then
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
         root.CFrame = origem
@@ -1629,7 +1651,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB")
+print("PEGASUS HUB V8.2")
 print("Generic Voice Game")
 print("Script carregado!")
 print("======================================")
