@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V7
+-- PEGASUS HUB V8
 -- Generic Voice Game
 --==================================================
 
@@ -15,6 +15,7 @@ local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
 local Pesca = ReplicatedStorage:WaitForChild("Pesca")
+local Pedido = Pesca:WaitForChild("Pedido")
 local Evento = Pesca:WaitForChild("Evento")
 local Config = require(Pesca:WaitForChild("Config"))
 
@@ -77,6 +78,13 @@ local flyVelocity = nil
 local flyGyro = nil
 local velocidadeOriginal = nil
 
+local autoSell = false
+local vendendo = false
+local cestoAtual = nil
+local vendas = 0
+local totalVendido = 0
+local statusVenda = "Aguardando consulta"
+local proximaConsulta = 0
 local autoTreasure = false
 local bauCompleto = false
 local buscandoBau = false
@@ -113,7 +121,7 @@ local function mouse(down)
 end
 
 local function clique()
-    if not ligado then return end
+    if vendendo or not ligado then return end
 
     mouse(false)
     mouse(true)
@@ -348,7 +356,7 @@ end
 --==================================================
 
 local function lancar()
-    if not ligado or estado ~= "livre" then
+    if vendendo or not ligado or estado ~= "livre" then
         return
     end
 
@@ -463,6 +471,74 @@ local function obterPersonagem()
     return char,
         char:FindFirstChildOfClass("Humanoid"),
         char:FindFirstChild("HumanoidRootPart")
+end
+
+-- AUTO SELL: consulta e venda pelo fluxo identificado em PescaTelas
+local function consultarCesto()
+    local dados = Pedido:InvokeServer("Dados")
+    if type(dados) ~= "table" or type(dados.peixes) ~= "table" then
+        error("Dados do cesto indisponiveis")
+    end
+    cestoAtual = #dados.peixes
+    return cestoAtual
+end
+
+local function cicloVenda()
+    local char, humanoid, root = obterPersonagem()
+    local origem = nil
+    local ok, motivo = pcall(function()
+        statusVenda = "Verificando cesto"
+        if consultarCesto() < Config.MAXIMO_NO_CESTO then
+            statusVenda = "Aguardando cesto cheio"
+            return
+        end
+        if not autoSell or not ligado then return end
+        if not root or not humanoid or humanoid.Health <= 0 or flyAtivo then
+            error("Personagem indisponivel ou Fly ativo")
+        end
+        local barraca = workspace:FindFirstChild("BarracaDePesca")
+        local conversa = barraca and barraca:FindFirstChild("Conversa")
+        if not conversa or not conversa:IsA("BasePart") then error("Conversa do Juca nao encontrada") end
+        origem = root.CFrame
+        statusVenda = "Indo ao Juca"
+        resetarControle()
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.CFrame = conversa.CFrame * CFrame.new(0, 0, -4) + Vector3.new(0, 2, 0)
+        task.wait(1)
+        if not autoSell or not ligado then return end
+        if Player.Character ~= char or humanoid.Health <= 0 or (root.Position-conversa.Position).Magnitude > 16 then
+            error("Nao chegou ao vendedor")
+        end
+        statusVenda = "Vendendo inventario"
+        local total = Pedido:InvokeServer("Total")
+        if type(total) ~= "table" or total.erro or (tonumber(total.quantos) or 0) <= 0 then error("Cotacao indisponivel") end
+        if not autoSell or not ligado then return end
+        local resposta = Pedido:InvokeServer("VenderTudo")
+        if type(resposta) ~= "table" or resposta.erro then error("Venda recusada") end
+        statusVenda = "Confirmando venda"
+        local confirmado = false
+        for i = 1, 4 do
+            task.wait(0.6)
+            if consultarCesto() == 0 then confirmado = true break end
+        end
+        if not confirmado then error("Cesto nao esvaziado") end
+        vendas += 1
+        totalVendido += tonumber(resposta.valor) or 0
+        statusVenda = "Venda concluida"
+    end)
+    if origem and Player.Character == char and root.Parent and humanoid and humanoid.Health > 0 then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.CFrame = origem
+    end
+    if not ok then
+        statusVenda = "Falha: " .. tostring(motivo)
+        warn("[PEGASUS] " .. statusVenda)
+    end
+    proximaConsulta = os.clock() + (ok and 2 or 30)
+    ultimaPesca = os.clock() - TEMPO_ENTRE_PESCAS
+    estado = "livre"
+    vendendo = false
 end
 
 --==================================================
@@ -1001,6 +1077,16 @@ botaoBau.MouseButton1Click:Connect(function()
     autoTreasure = not autoTreasure
     atualizarBotao(botaoBau, "Auto Treasure", autoTreasure)
 end)
+local botaoVenda = criarBotao(abaFishing, "Auto Sell: OFF")
+atualizarBotao(botaoVenda, "Auto Sell", autoSell)
+botaoVenda.MouseButton1Click:Connect(function()
+    autoSell = not autoSell
+    proximaConsulta = 0
+    atualizarBotao(botaoVenda, "Auto Sell", autoSell)
+end)
+local labelCesto = titulo(abaFishing, "Cesto: --/" .. Config.MAXIMO_NO_CESTO)
+local labelVenda = titulo(abaFishing, "Vendas: 0 | Moedas: 0")
+local labelStatusVenda = titulo(abaFishing, "Auto Sell: Desativado")
 local contadorBaus = titulo(abaFishing, "Baus capturados: 0")
 
 local statusPesca = titulo(
@@ -1297,7 +1383,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V7 | RightShift"
+rodape.Text = "PEGASUS HUB | Generic Voice Game"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1403,6 +1489,9 @@ task.spawn(function()
         contadorAFK.Text =
             "Eventos Anti-AFK: " .. eventosAFK
 
+        labelCesto.Text = "Cesto: " .. (cestoAtual or "--") .. "/" .. Config.MAXIMO_NO_CESTO
+        labelVenda.Text = "Vendas: " .. vendas .. " | Moedas: " .. totalVendido
+        labelStatusVenda.Text = "Auto Sell: " .. (autoSell and statusVenda or "Desativado")
         contadorBaus.Text = "Baus capturados: " .. bausCapturados
         contadorPeixes.Text =
             "Peixes capturados: " .. peixesCapturados
@@ -1441,7 +1530,7 @@ end)
 --==================================================
 
 RunService.Heartbeat:Connect(function()
-    if not ligado then
+    if vendendo or not ligado then
         return
     end
 
@@ -1468,7 +1557,12 @@ RunService.Heartbeat:Connect(function()
     elseif estado == "livre" then
 
         if agora - ultimaPesca >= TEMPO_ENTRE_PESCAS then
-            task.spawn(lancar)
+            if autoSell and agora >= proximaConsulta then
+                vendendo = true
+                task.spawn(cicloVenda)
+            else
+                task.spawn(lancar)
+            end
         end
 
     elseif estado == "fisgando" then
@@ -1494,7 +1588,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V7")
+print("PEGASUS HUB")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
