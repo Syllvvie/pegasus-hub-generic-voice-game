@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.8
+-- PEGASUS HUB V8.9
 -- Generic Voice Game
 --==================================================
 
@@ -45,13 +45,15 @@ local Locations = {
     {
         Nome = "Topo Escada Espiral",
         Posicao = Vector3.new(170, 5100, 5)
-    }
+    },
+    { Nome = "Lago", Posicao = Vector3.new(94.81633758544922, 3.3300111293792725, 4.651993274688721) }
 }
 
 --==================================================
 -- ESTADOS
 --==================================================
 
+local fishingLocation = CFrame.new(Locations[2].Posicao)
 local ligado = false
 local estado = "livre"
 local mousePressionado = false
@@ -533,18 +535,18 @@ local function aguardarVenda(fn, segundos, erro)
     error(erro)
 end
 local function clicarVenda(botao, esperado)
-    if not botao or not visivel(botao) or not botao.Active or botao.Text ~= esperado or (esperado == "Vender o inventário de peixes" and botao.LayoutOrder ~= 2) then
-        error("Botao incorreto ou indisponivel: " .. esperado)
+    local ordem = esperado == "Vender o inventário de peixes" and 2 or (esperado == "Vender tudo" and 1 or nil)
+    if not botao or not visivel(botao) or botao.Text ~= esperado or (ordem and botao.LayoutOrder ~= ordem) then
+        error("Botao incorreto: " .. esperado)
     end
-    -- Do not use coordinate fallback: it has selected adjacent options.
-    if type(firesignal) ~= "function" then
-        error("Executor sem suporte a Activated; clique manual necessario")
-    end
-    local ok, motivo = pcall(function()
-        firesignal(botao.Activated, nil, 1)
-    end)
-    if not ok then error("Activated falhou: " .. tostring(motivo)) end
-    print("[PEGASUS] Activated solicitado: " .. esperado)
+    -- Use the actual button center and account for the owning ScreenGui inset.
+    local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
+    local tela = botao:FindFirstAncestorOfClass("ScreenGui")
+    if tela and not tela.IgnoreGuiInset then pos += GuiService:GetGuiInset() end
+    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+    task.wait(0.12)
+    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+    print("[PEGASUS] Clique: " .. esperado .. " ordem " .. tostring(botao.LayoutOrder))
 end
 local function cicloVenda(manual)
     vendaManual = manual == true
@@ -1229,6 +1231,15 @@ botaoSell.MouseButton1Click:Connect(function()
     vendendo = true
     task.spawn(cicloVenda, true)
 end)
+local botaoSalvarPesca = criarBotao(abaFishing, "Save Fishing Location")
+local labelLocalPesca = titulo(abaFishing, "Local de pesca: Lago")
+botaoSalvarPesca.MouseButton1Click:Connect(function()
+    if vendendo then return end
+    local _, _, root = obterPersonagem()
+    if not root then return end
+    fishingLocation = root.CFrame
+    labelLocalPesca.Text = "Local de pesca: Salvo"
+end)
 local labelCesto = titulo(abaFishing, "Cesto: --/" .. Config.MAXIMO_NO_CESTO)
 local labelVenda = titulo(abaFishing, "Vendas: 0 | Moedas: 0")
 local labelStatusVenda = titulo(abaFishing, "Auto Sell: Desativado")
@@ -1245,6 +1256,25 @@ local contadorPeixes = titulo(
 )
 
 local function alternarPesca()
+    if vendendo then return end
+    if not ligado then
+        local char, humanoid, root = obterPersonagem()
+        if not char or not humanoid or not root or humanoid.Health <= 0 or flyAtivo then return end
+        local vara = pegarVara()
+        if not vara then
+            local mochila = Player:FindFirstChildOfClass("Backpack")
+            if mochila then
+                for _, item in ipairs(mochila:GetChildren()) do
+                    if item:IsA("Tool") and item:GetAttribute("VaraId") ~= nil then vara = item; break end
+                end
+            end
+        end
+        if not vara then statusPesca.Text = "Status: Nenhuma vara encontrada"; return end
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.CFrame = fishingLocation
+        if vara.Parent ~= char then humanoid:EquipTool(vara) end
+    end
     ligado = not ligado
     bauCompleto = false
 
@@ -1528,7 +1558,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V8.8 | RightShift"
+rodape.Text = "PEGASUS HUB V8.9 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1749,7 +1779,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V8.8")
+print("PEGASUS HUB V8.9")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
