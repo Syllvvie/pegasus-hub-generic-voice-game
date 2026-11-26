@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8
+-- PEGASUS HUB V8.1
 -- Generic Voice Game
 --==================================================
 
@@ -441,19 +441,37 @@ end)
 -- ANTI AFK INDEPENDENTE
 --==================================================
 
-Player.Idled:Connect(function()
-    if not antiAFK then
-        return
-    end
-
-    local sucesso = pcall(function()
+local ultimoAFK = 0
+local statusAFK = "Aguardando"
+local function executarAFK()
+    if not antiAFK or vendendo or mousePressionado or UserInputService:GetFocusedTextBox() then return end
+    if os.clock() - ultimoAFK < 60 then return end
+    ultimoAFK = os.clock()
+    local ok, erro = pcall(function()
         VirtualUser:CaptureController()
         VirtualUser:ClickButton2(Vector2.new(0, 0))
     end)
-
-    if sucesso then
+    if not ok then
+        ok, erro = pcall(function()
+            local camera = workspace.CurrentCamera
+            local pos = camera.ViewportSize / 2
+            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 1, true, game, 0)
+            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 1, false, game, 0)
+        end)
+    end
+    if ok then
         eventosAFK += 1
-        print("[PEGASUS] Anti-AFK executado.")
+        statusAFK = "Entrada enviada"
+    else
+        statusAFK = "Falha (ver console)"
+        warn("[PEGASUS] Anti-AFK: " .. tostring(erro))
+    end
+end
+Player.Idled:Connect(executarAFK)
+task.spawn(function()
+    while true do
+        task.wait(5)
+        executarAFK()
     end
 end)
 
@@ -483,6 +501,25 @@ local function consultarCesto()
     return cestoAtual
 end
 
+local function abrirDialogoVenda(conversa)
+    local prompt = conversa:FindFirstChildOfClass("ProximityPrompt")
+    if not prompt then error("ProximityPrompt ausente") end
+    if Player:GetAttribute("_conversa") then error("Outro dialogo aberto") end
+    local tecla = prompt.KeyboardKeyCode
+    local ok, motivo = pcall(function()
+        VirtualInputManager:SendKeyEvent(true, tecla, false, game)
+        task.wait(prompt.HoldDuration + 0.35)
+    end)
+    pcall(function() VirtualInputManager:SendKeyEvent(false, tecla, false, game) end)
+    if not ok then error(motivo) end
+    local limite = os.clock() + 5
+    repeat
+        if Player:GetAttribute("_conversa") then return end
+        task.wait(0.1)
+    until os.clock() >= limite or not autoSell or not ligado
+    error("Dialogo do Juca nao abriu")
+end
+
 local function cicloVenda()
     local char, humanoid, root = obterPersonagem()
     local origem = nil
@@ -509,6 +546,9 @@ local function cicloVenda()
         if Player.Character ~= char or humanoid.Health <= 0 or (root.Position-conversa.Position).Magnitude > 16 then
             error("Nao chegou ao vendedor")
         end
+        statusVenda = "Abrindo dialogo do Juca"
+        abrirDialogoVenda(conversa)
+        if not autoSell or not ligado then return end
         statusVenda = "Vendendo inventario"
         local total = Pedido:InvokeServer("Total")
         if type(total) ~= "table" or total.erro or (tonumber(total.quantos) or 0) <= 0 then error("Cotacao indisponivel") end
@@ -1050,6 +1090,7 @@ local contadorAFK = titulo(
 
 botaoAFK.MouseButton1Click:Connect(function()
     antiAFK = not antiAFK
+    if antiAFK then ultimoAFK = os.clock() - 60 end
 
     atualizarBotao(
         botaoAFK,
@@ -1383,7 +1424,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB | Generic Voice Game"
+rodape.Text = "PEGASUS HUB"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1487,7 +1528,7 @@ task.spawn(function()
 
 
         contadorAFK.Text =
-            "Eventos Anti-AFK: " .. eventosAFK
+            "Eventos Anti-AFK: " .. eventosAFK .. " | " .. (antiAFK and statusAFK or "OFF")
 
         labelCesto.Text = "Cesto: " .. (cestoAtual or "--") .. "/" .. Config.MAXIMO_NO_CESTO
         labelVenda.Text = "Vendas: " .. vendas .. " | Moedas: " .. totalVendido
@@ -1591,7 +1632,4 @@ print("======================================")
 print("PEGASUS HUB")
 print("Generic Voice Game")
 print("Script carregado!")
-print("K - Auto Fishing")
-print("F - Fly")
-print("RightShift - Interface")
 print("======================================")
