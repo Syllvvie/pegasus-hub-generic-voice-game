@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.9
+-- PEGASUS HUB V9.0
 -- Generic Voice Game
 --==================================================
 
@@ -520,8 +520,12 @@ end
 local function botaoVendaVisivel(texto)
     local tela = PlayerGui:FindFirstChild("PescaTelas")
     if not tela then return nil end
+    local ordem = texto == "Vender o inventário de peixes" and 2 or (texto == "Vender tudo" and 1 or nil)
     for _, obj in ipairs(tela:GetDescendants()) do
-        if obj:IsA("TextButton") and obj.Text == texto and visivel(obj) and obj.AbsoluteSize.X > 0 then return obj end
+        if obj:IsA("TextButton") and visivel(obj) and obj.Interactable and obj.AbsoluteSize.X > 0 and (not ordem or obj.LayoutOrder == ordem) then
+            local rotulo = obj:FindFirstChild("_Texto")
+            if obj.Text == texto or (rotulo and rotulo:IsA("TextLabel") and rotulo.Text == texto) then return obj end
+        end
     end
 end
 local function aguardarVenda(fn, segundos, erro)
@@ -535,18 +539,20 @@ local function aguardarVenda(fn, segundos, erro)
     error(erro)
 end
 local function clicarVenda(botao, esperado)
-    local ordem = esperado == "Vender o inventário de peixes" and 2 or (esperado == "Vender tudo" and 1 or nil)
-    if not botao or not visivel(botao) or botao.Text ~= esperado or (ordem and botao.LayoutOrder ~= ordem) then
-        error("Botao incorreto: " .. esperado)
+    if not botao or botaoVendaVisivel(esperado) ~= botao then error("Botao incorreto: " .. esperado) end
+    -- Do not fall back to screen coordinates: they selected the wrong option.
+    if type(getconnections) ~= "function" then error("Executor sem getconnections; venda cancelada") end
+    local conexoes = getconnections(botao.Activated)
+    local executadas = 0
+    for _, conexao in ipairs(conexoes) do
+        if conexao.Enabled ~= false and type(conexao.Function) == "function" then
+            local callback = conexao.Function
+            task.spawn(callback)
+            executadas += 1
+        end
     end
-    -- Use the actual button center and account for the owning ScreenGui inset.
-    local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
-    local tela = botao:FindFirstAncestorOfClass("ScreenGui")
-    if tela and not tela.IgnoreGuiInset then pos += GuiService:GetGuiInset() end
-    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-    task.wait(0.12)
-    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
-    print("[PEGASUS] Clique: " .. esperado .. " ordem " .. tostring(botao.LayoutOrder))
+    if executadas == 0 then error("Nenhum callback Activated acessivel: " .. esperado) end
+    print("[PEGASUS] Activated: " .. esperado .. " ordem " .. tostring(botao.LayoutOrder))
 end
 local function cicloVenda(manual)
     vendaManual = manual == true
@@ -1558,7 +1564,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V8.9 | RightShift"
+rodape.Text = "PEGASUS HUB V9.0 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1779,7 +1785,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V8.9")
+print("PEGASUS HUB V9.0")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
