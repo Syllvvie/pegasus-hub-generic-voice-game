@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.6
+-- PEGASUS HUB V8.7
 -- Generic Voice Game
 --==================================================
 
@@ -533,21 +533,35 @@ local function aguardarVenda(fn, segundos, erro)
     error(erro)
 end
 local function clicarVenda(botao)
-    if not botao or not visivel(botao) then error("Botao indisponivel") end
+    if not botao or not visivel(botao) or not botao.Active then error("Botao indisponivel") end
+    local texto = botao.Text
+    -- Prefer the actual Activated signal when supported by the executor.
+    if type(firesignal) == "function" then
+        local ok, motivo = pcall(function()
+            firesignal(botao.Activated, nil, 1)
+        end)
+        if ok then
+            print("[PEGASUS] Activated: " .. texto)
+            return
+        end
+        warn("[PEGASUS] Activated indisponivel: " .. tostring(motivo))
+    end
+    -- Physical click fallback: IgnoreGuiInset uses screen coordinates.
     local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
     local tela = botao:FindFirstAncestorOfClass("ScreenGui")
-    local inset = GuiService:GetGuiInset()
-    if tela and tela.IgnoreGuiInset then
-        pos = pos - inset
-    end
-    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-    task.wait(0.12)
-    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+    if tela and not tela.IgnoreGuiInset then pos = pos + GuiService:GetGuiInset() end
+    local x, y = math.floor(pos.X), math.floor(pos.Y)
+    VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    task.wait(0.15)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+    task.wait(0.15)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    print("[PEGASUS] Clique: " .. texto .. " (" .. x .. ", " .. y .. ")")
 end
 local function cicloVenda(manual)
     vendaManual = manual == true
     local char, humanoid, root = obterPersonagem()
-    local origem, hub, hubVisivel, varaSalva
+    local origem, hub, hubOrdem, varaSalva
     local ok, motivo = pcall(function()
         statusVenda = "Verificando cesto"
         local quantidade = consultarCesto()
@@ -608,7 +622,8 @@ local function cicloVenda(manual)
         end
         local opcao = aguardarVenda(function() return botaoVendaVisivel("Vender o inventário de peixes") end, 8, "Menu do Juca nao abriu")
         hub = PlayerGui:FindFirstChild("PEGASUS_HUB")
-        if hub then hubVisivel = hub.Enabled; hub.Enabled = false end
+        if hub then hubOrdem = hub.DisplayOrder; hub.DisplayOrder = 11 end
+        task.wait(0.25)
         statusVenda = "Solicitando proposta"
         clicarVenda(opcao)
         local confirmar = aguardarVenda(function() return botaoVendaVisivel("Vender tudo") end, 8, "Proposta nao apareceu")
@@ -627,7 +642,12 @@ local function cicloVenda(manual)
         if fechar then clicarVenda(fechar) end
         statusVenda = "Venda concluida"
     end)
-    if hub and hub.Parent then hub.Enabled = hubVisivel end
+    if not ok then
+        statusVenda = "Falha: " .. tostring(motivo)
+        warn("[PEGASUS] " .. statusVenda)
+        task.wait(5)
+    end
+    if hub and hub.Parent and hubOrdem then hub.DisplayOrder = hubOrdem end
     if origem and Player.Character == char and root.Parent and humanoid.Health > 0 then
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
@@ -1520,7 +1540,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V8.6 | RightShift"
+rodape.Text = "PEGASUS HUB V8.7 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1741,7 +1761,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V8.6")
+print("PEGASUS HUB V8.7")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
