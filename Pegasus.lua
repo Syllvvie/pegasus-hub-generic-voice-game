@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V9.4
+-- PEGASUS HUB V9.5
 -- Generic Voice Game
 --==================================================
 
@@ -499,13 +499,24 @@ local function obterPersonagem()
 end
 
 -- AUTO SELL: consulta e venda pelo fluxo identificado em PescaTelas
-local function consultarCesto()
-    local dados = Pedido:InvokeServer("Dados")
-    if type(dados) ~= "table" or type(dados.peixes) ~= "table" then
+local consultandoCesto = false
+local function consultarCesto(tentativas)
+    if consultandoCesto then error("Consulta do cesto em andamento") end
+    consultandoCesto = true
+    local ok, dados = pcall(function()
+        for i = 1, tentativas or 1 do
+            local sucesso, resposta = pcall(function() return Pedido:InvokeServer("Dados") end)
+            if sucesso and type(resposta) == "table" and type(resposta.peixes) == "table" then
+                return resposta
+            end
+            if i < (tentativas or 1) then task.wait(0.6) end
+        end
         error("Dados do cesto indisponiveis")
-    end
+    end)
+    consultandoCesto = false
+    if not ok then error(dados) end
     cestoAtual = #dados.peixes
-    return cestoAtual
+    return cestoAtual, dados
 end
 
 local function visivel(obj)
@@ -515,6 +526,15 @@ local function visivel(obj)
         obj = obj.Parent
     end
     return obj == PlayerGui
+end
+local function mensagemVenda(prefixo)
+    local tela = PlayerGui:FindFirstChild("PescaTelas")
+    if not tela then return nil end
+    for _, obj in ipairs(tela:GetDescendants()) do
+        if obj:IsA("TextLabel") and visivel(obj) and obj.Text:sub(1, #prefixo) == prefixo then
+            return obj.Text
+        end
+    end
 end
 local function botaoVendaVisivel(texto)
     local tela = PlayerGui:FindFirstChild("PescaTelas")
@@ -567,7 +587,8 @@ local function cicloVenda(manual)
     local origem, hub, hubOrdem, varaSalva
     local ok, motivo = pcall(function()
         statusVenda = "Verificando cesto"
-        local quantidade = consultarCesto()
+        aguardarVenda(function() return not consultandoCesto end, 8, "Consulta anterior ainda em andamento")
+        local quantidade = consultarCesto(10)
         if quantidade == 0 then statusVenda = "Cesto vazio"; return end
         if not manual and quantidade < Config.MAXIMO_NO_CESTO then
             statusVenda = "Aguardando cesto cheio"
@@ -579,11 +600,6 @@ local function cicloVenda(manual)
         local conversa = barraca and barraca:FindFirstChild("Conversa")
         local prompt = conversa and conversa:FindFirstChildOfClass("ProximityPrompt")
         if not prompt or not conversa:IsA("BasePart") then error("Prompt do Juca nao encontrado") end
-        local antes = Pedido:InvokeServer("Dados")
-        local saldo = type(antes) == "table" and tonumber(antes.moedas) or nil
-        if type(antes) ~= "table" or type(antes.peixes) ~= "table" or #antes.peixes ~= quantidade then
-            error("Cesto mudou antes da venda")
-        end
         origem = root.CFrame
         resetarControle()
         varaSalva = pegarVara()
@@ -630,31 +646,24 @@ local function cicloVenda(manual)
         statusVenda = "Confirmando venda"
         clicarVenda(confirmar, "Vender tudo")
         statusVenda = "Verificando saldo e cesto"
-        local verificacoes = 0
-        local depois = aguardarVenda(function()
-            local dados = Pedido:InvokeServer("Dados")
-            if type(dados) == "table" and type(dados.peixes) == "table" then
-                cestoAtual = #dados.peixes
-                if cestoAtual == 0 then
-                    verificacoes += 1
-                    if verificacoes >= 2 then return dados end
-                else
-                    verificacoes = 0
-                end
-            else
-                verificacoes = 0
-            end
-            task.wait(0.5)
-        end, 15, "Venda nao confirmada: cesto nao esvaziado")
+        local mensagem = aguardarVenda(function()
+            return mensagemVenda("Negócio fechado!")
+        end, 15, "Venda nao confirmada pelo Juca")
+        local valor = mensagem:match("Aqui estão ([%d%.]+) moedas")
         vendas += 1
-        local saldoFinal = tonumber(depois.moedas)
-        if saldo and saldoFinal and saldoFinal > saldo then
-            totalVendido += saldoFinal - saldo
-        else
-            warn("[PEGASUS] Venda confirmada pelo cesto; valor recebido indisponivel")
+        if valor then totalVendido += tonumber((valor:gsub("%.", ""))) or 0 end
+        cestoAtual = nil
+        local confirmado, restante = pcall(consultarCesto, 5)
+        if not confirmado then
+            warn("[PEGASUS] Venda confirmada; aguardando atualizacao do cesto")
+        elseif restante ~= 0 then
+            warn("[PEGASUS] Venda confirmada; cesto ainda informa " .. tostring(restante))
         end
         local fechar = botaoVendaVisivel("Tchau!")
-        if fechar then clicarVenda(fechar, "Tchau!") end
+        if fechar then
+            local fechou, erroFechar = pcall(clicarVenda, fechar, "Tchau!")
+            if not fechou then warn("[PEGASUS] Venda concluida; falha ao fechar: " .. tostring(erroFechar)) end
+        end
         statusVenda = "Venda concluida"
     end)
     if not ok then
@@ -1576,7 +1585,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V9.4 | RightShift"
+rodape.Text = "PEGASUS HUB V9.5 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1785,7 +1794,7 @@ end)
 -- Atualiza o cesto independentemente do Auto Sell.
 task.spawn(function()
     while gui.Parent do
-        if not vendendo then
+        if not vendendo and not consultandoCesto then
             local ok, motivo = pcall(consultarCesto)
             if not ok then
                 cestoAtual = nil
@@ -1799,7 +1808,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V9.4")
+print("PEGASUS HUB V9.5")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
