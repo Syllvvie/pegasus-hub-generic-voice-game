@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.2
+-- PEGASUS HUB V8.3
 -- Generic Voice Game
 --==================================================
 
@@ -80,6 +80,8 @@ local velocidadeOriginal = nil
 
 local autoSell = false
 local vendendo = false
+local vendaManual = false
+local vendaRemota = false
 local cestoAtual = nil
 local vendas = 0
 local totalVendido = 0
@@ -519,7 +521,7 @@ end
 local function aguardarVenda(fn, segundos, erro)
     local limite = os.clock() + segundos
     repeat
-        if not autoSell or not ligado then error("Venda cancelada") end
+        if not vendaManual and not autoSell then error("Venda cancelada") end
         local resultado = fn()
         if resultado then return resultado end
         task.wait(0.15)
@@ -532,16 +534,35 @@ local function clicarVenda(botao)
     task.wait(0.12)
     VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
 end
-local function cicloVenda()
+local function cicloVenda(manual)
+    vendaManual = manual == true
     local char, humanoid, root = obterPersonagem()
     local origem, hub, hubVisivel
     local ok, motivo = pcall(function()
         statusVenda = "Verificando cesto"
-        if consultarCesto() < Config.MAXIMO_NO_CESTO then
+        local quantidade = consultarCesto()
+        if quantidade == 0 then statusVenda = "Cesto vazio"; return end
+        if not manual and quantidade < Config.MAXIMO_NO_CESTO then
             statusVenda = "Aguardando cesto cheio"
             return
         end
-        if not autoSell or not ligado then return end
+        if not manual and not autoSell then return end
+        if vendaRemota then
+            statusVenda = "Tentando venda remota"
+            local total = Pedido:InvokeServer("Total")
+            if type(total) ~= "table" or total.erro or not total.quantos or total.quantos == 0 then
+                error("Cotacao remota recusada: " .. tostring(type(total) == "table" and total.erro or total))
+            end
+            local resultado = Pedido:InvokeServer("VenderTudo")
+            if type(resultado) ~= "table" or resultado.erro then
+                error("Venda remota recusada: " .. tostring(type(resultado) == "table" and resultado.erro or resultado))
+            end
+            if consultarCesto() ~= 0 then error("Cesto nao esvaziado") end
+            vendas += 1
+            totalVendido += tonumber(resultado.valor) or 0
+            statusVenda = "Venda remota concluida"
+            return
+        end
         if not root or not humanoid or humanoid.Health <= 0 or flyAtivo then error("Personagem indisponivel ou Fly ativo") end
         local barraca = workspace:FindFirstChild("BarracaDePesca")
         local conversa = barraca and barraca:FindFirstChild("Conversa")
@@ -600,6 +621,7 @@ local function cicloVenda()
     proximaConsulta = os.clock() + (ok and 2 or 30)
     ultimaPesca = os.clock() - TEMPO_ENTRE_PESCAS
     estado = "livre"
+    vendaManual = false
     vendendo = false
 end
 
@@ -1105,10 +1127,6 @@ local botaoAFK = criarBotao(
     "Anti-AFK: OFF"
 )
 
-local contadorAFK = titulo(
-    abaGeneral,
-    "Eventos Anti-AFK: 0"
-)
 
 botaoAFK.MouseButton1Click:Connect(function()
     antiAFK = not antiAFK
@@ -1146,6 +1164,24 @@ botaoVenda.MouseButton1Click:Connect(function()
     autoSell = not autoSell
     proximaConsulta = 0
     atualizarBotao(botaoVenda, "Auto Sell", autoSell)
+end)
+local botaoRemoto = criarBotao(abaFishing, "Remote Sell: OFF")
+atualizarBotao(botaoRemoto, "Remote Sell", vendaRemota)
+botaoRemoto.MouseButton1Click:Connect(function()
+    if vendendo then return end
+    vendaRemota = not vendaRemota
+    atualizarBotao(botaoRemoto, "Remote Sell", vendaRemota)
+end)
+local botaoSell = criarBotao(abaFishing, "Sell Inventory")
+botaoSell.MouseButton1Click:Connect(function()
+    if vendendo then return end
+    if ligado and estado ~= "livre" then
+        vendaManual = true
+        statusVenda = "Venda manual na fila"
+        return
+    end
+    vendendo = true
+    task.spawn(cicloVenda, true)
 end)
 local labelCesto = titulo(abaFishing, "Cesto: --/" .. Config.MAXIMO_NO_CESTO)
 local labelVenda = titulo(abaFishing, "Vendas: 0 | Moedas: 0")
@@ -1446,7 +1482,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB"
+rodape.Text = "PEGASUS HUB V8.3 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1549,12 +1585,10 @@ task.spawn(function()
     while gui.Parent do
 
 
-        contadorAFK.Text =
-            "Eventos Anti-AFK: " .. eventosAFK .. " | " .. (antiAFK and statusAFK or "OFF")
 
         labelCesto.Text = "Cesto: " .. (cestoAtual or "--") .. "/" .. Config.MAXIMO_NO_CESTO
         labelVenda.Text = "Vendas: " .. vendas .. " | Moedas: " .. totalVendido
-        labelStatusVenda.Text = "Auto Sell: " .. (autoSell and statusVenda or "Desativado")
+        labelStatusVenda.Text = "Auto Sell: " .. ((autoSell or vendendo or vendaManual or statusVenda ~= "Aguardando consulta") and statusVenda or "Desativado")
         contadorBaus.Text = "Baus capturados: " .. bausCapturados
         contadorPeixes.Text =
             "Peixes capturados: " .. peixesCapturados
@@ -1593,9 +1627,13 @@ end)
 --==================================================
 
 RunService.Heartbeat:Connect(function()
-    if vendendo or not ligado then
+    if vendendo then return end
+    if vendaManual and (not ligado or estado == "livre") then
+        vendendo = true
+        task.spawn(cicloVenda, true)
         return
     end
+    if not ligado then return end
 
     if not pegarVara() then
 
@@ -1651,7 +1689,10 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V8.2")
+print("PEGASUS HUB V8.3")
 print("Generic Voice Game")
 print("Script carregado!")
+print("K - Auto Fishing")
+print("F - Fly")
+print("RightShift - Interface")
 print("======================================")
