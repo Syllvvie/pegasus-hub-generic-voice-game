@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.7
+-- PEGASUS HUB V8.8
 -- Generic Voice Game
 --==================================================
 
@@ -532,31 +532,19 @@ local function aguardarVenda(fn, segundos, erro)
     until os.clock() >= limite
     error(erro)
 end
-local function clicarVenda(botao)
-    if not botao or not visivel(botao) or not botao.Active then error("Botao indisponivel") end
-    local texto = botao.Text
-    -- Prefer the actual Activated signal when supported by the executor.
-    if type(firesignal) == "function" then
-        local ok, motivo = pcall(function()
-            firesignal(botao.Activated, nil, 1)
-        end)
-        if ok then
-            print("[PEGASUS] Activated: " .. texto)
-            return
-        end
-        warn("[PEGASUS] Activated indisponivel: " .. tostring(motivo))
+local function clicarVenda(botao, esperado)
+    if not botao or not visivel(botao) or not botao.Active or botao.Text ~= esperado or (esperado == "Vender o inventário de peixes" and botao.LayoutOrder ~= 2) then
+        error("Botao incorreto ou indisponivel: " .. esperado)
     end
-    -- Physical click fallback: IgnoreGuiInset uses screen coordinates.
-    local pos = botao.AbsolutePosition + botao.AbsoluteSize / 2
-    local tela = botao:FindFirstAncestorOfClass("ScreenGui")
-    if tela and not tela.IgnoreGuiInset then pos = pos + GuiService:GetGuiInset() end
-    local x, y = math.floor(pos.X), math.floor(pos.Y)
-    VirtualInputManager:SendMouseMoveEvent(x, y, game)
-    task.wait(0.15)
-    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-    task.wait(0.15)
-    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    print("[PEGASUS] Clique: " .. texto .. " (" .. x .. ", " .. y .. ")")
+    -- Do not use coordinate fallback: it has selected adjacent options.
+    if type(firesignal) ~= "function" then
+        error("Executor sem suporte a Activated; clique manual necessario")
+    end
+    local ok, motivo = pcall(function()
+        firesignal(botao.Activated, nil, 1)
+    end)
+    if not ok then error("Activated falhou: " .. tostring(motivo)) end
+    print("[PEGASUS] Activated solicitado: " .. esperado)
 end
 local function cicloVenda(manual)
     vendaManual = manual == true
@@ -625,10 +613,10 @@ local function cicloVenda(manual)
         if hub then hubOrdem = hub.DisplayOrder; hub.DisplayOrder = 11 end
         task.wait(0.25)
         statusVenda = "Solicitando proposta"
-        clicarVenda(opcao)
+        clicarVenda(opcao, "Vender o inventário de peixes")
         local confirmar = aguardarVenda(function() return botaoVendaVisivel("Vender tudo") end, 8, "Proposta nao apareceu")
         statusVenda = "Confirmando venda"
-        clicarVenda(confirmar)
+        clicarVenda(confirmar, "Vender tudo")
         local depois = aguardarVenda(function()
             local dados = Pedido:InvokeServer("Dados")
             if type(dados) == "table" and type(dados.peixes) == "table" then
@@ -639,7 +627,7 @@ local function cicloVenda(manual)
         vendas += 1
         if saldo and tonumber(depois.moedas) then totalVendido += math.max(0, depois.moedas - saldo) end
         local fechar = botaoVendaVisivel("Tchau!")
-        if fechar then clicarVenda(fechar) end
+        if fechar then clicarVenda(fechar, "Tchau!") end
         statusVenda = "Venda concluida"
     end)
     if not ok then
@@ -1540,7 +1528,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V8.7 | RightShift"
+rodape.Text = "PEGASUS HUB V8.8 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1761,7 +1749,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V8.7")
+print("PEGASUS HUB V8.8")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
