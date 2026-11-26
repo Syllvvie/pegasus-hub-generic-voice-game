@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V9.7
+-- PEGASUS HUB V9.8
 -- Generic Voice Game
 --==================================================
 
@@ -46,14 +46,14 @@ local Locations = {
         Nome = "Topo Escada Espiral",
         Posicao = Vector3.new(170, 5100, 5)
     },
-    { Nome = "Lago", Posicao = Vector3.new(-0.885, 3.33, -87.701) }
+    { Nome = "Lago", Posicao = Vector3.new(85.7377472, 3.1899991, 52.333786), Orientacao = CFrame.new(85.7377472, 3.1899991, 52.333786, -0.996407866, -7.94384434e-08, 0.0846837088, -8.35050216e-08, 1, -4.44786821e-08, -0.0846837088, -5.13904261e-08, -0.996407866) }
 }
 
 --==================================================
 -- ESTADOS
 --==================================================
 
-local fishingLocation = CFrame.new(Locations[2].Posicao)
+local fishingLocation = Locations[2].Orientacao
 local ligado = false
 local estado = "livre"
 local mousePressionado = false
@@ -741,7 +741,7 @@ end
 -- TELEPORTAR ATE LOCAL
 --==================================================
 
-local function teleportarLocation(posicao)
+local function teleportarLocation(posicao, orientacao)
     local _, _, root = obterPersonagem()
 
     if not root then
@@ -751,7 +751,7 @@ local function teleportarLocation(posicao)
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
 
-    root.CFrame = CFrame.new(posicao)
+    root.CFrame = orientacao or CFrame.new(posicao)
 end
 
 --==================================================
@@ -1421,7 +1421,7 @@ for _, location in ipairs(Locations) do
     botaoLocation.BackgroundColor3 = CORES.roxo
 
     botaoLocation.MouseButton1Click:Connect(function()
-        teleportarLocation(location.Posicao)
+        teleportarLocation(location.Posicao, location.Orientacao)
     end)
 
     descricao(
@@ -1571,7 +1571,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V9.7 | RightShift"
+rodape.Text = "PEGASUS HUB V9.8 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1767,7 +1767,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V9.7")
+print("PEGASUS HUB V9.8")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
