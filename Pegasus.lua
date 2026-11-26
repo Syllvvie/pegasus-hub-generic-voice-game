@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V8.4
+-- PEGASUS HUB V8.6
 -- Generic Voice Game
 --==================================================
 
@@ -202,8 +202,10 @@ local function encontrarElementos()
     local peixe, bau, barra, progresso
     for _, obj in ipairs(captura:GetDescendants()) do
         if obj:IsA("ImageLabel") then
-            if obj.Image == Config.ICONES.peixe then peixe = obj.Parent end
-            if obj.Image == Config.ICONES.bau then bau = obj.Parent end
+            if obj.Image == Config.ICONES.peixe and obj.Parent:IsA("GuiObject")
+                and obj.Parent.Visible and obj.Parent.ZIndex == 4 then peixe = obj.Parent end
+            if obj.Image == Config.ICONES.bau and obj.Parent:IsA("GuiObject")
+                and obj.Parent.Visible then bau = obj.Parent end
         end
     end
     if not peixe then return end
@@ -254,6 +256,7 @@ local function controlarLuta()
 
     if not peixe or not barra then
         resetarControle()
+        ultimoControle = agora
         return
     end
 
@@ -544,7 +547,7 @@ end
 local function cicloVenda(manual)
     vendaManual = manual == true
     local char, humanoid, root = obterPersonagem()
-    local origem, hub, hubVisivel
+    local origem, hub, hubVisivel, varaSalva
     local ok, motivo = pcall(function()
         statusVenda = "Verificando cesto"
         local quantidade = consultarCesto()
@@ -579,6 +582,15 @@ local function cicloVenda(manual)
         local saldo = tonumber(antes and antes.moedas)
         origem = root.CFrame
         resetarControle()
+        varaSalva = pegarVara()
+        if varaSalva then
+            statusVenda = "Guardando vara"
+            humanoid:UnequipTools()
+            aguardarVenda(function()
+                return Player.Character == char and not pegarVara()
+            end, 4, "Nao foi possivel guardar a vara")
+            task.wait(0.5)
+        end
         statusVenda = "Indo ao Juca"
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
@@ -620,6 +632,20 @@ local function cicloVenda(manual)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
         root.CFrame = origem
+    end
+    if varaSalva and Player.Character == char and humanoid and humanoid.Health > 0 then
+        local restaurou, erroVara = pcall(function()
+            local mochila = Player:FindFirstChildOfClass("Backpack")
+            if varaSalva.Parent == char then return end
+            if not mochila or varaSalva.Parent ~= mochila then error("Vara original indisponivel") end
+            humanoid:EquipTool(varaSalva)
+            task.wait(0.5)
+            if varaSalva.Parent ~= char then error("Vara nao reequipada") end
+        end)
+        if not restaurou then
+            warn("[PEGASUS] Falha ao reequipar: " .. tostring(erroVara))
+            if ok then statusVenda = statusVenda .. " | Re equipe a vara" end
+        end
     end
     if not ok then
         statusVenda = "Falha: " .. tostring(motivo)
@@ -1163,6 +1189,11 @@ local botaoBau = criarBotao(abaFishing, "Auto Treasure: OFF")
 atualizarBotao(botaoBau, "Auto Treasure", autoTreasure)
 botaoBau.MouseButton1Click:Connect(function()
     autoTreasure = not autoTreasure
+    if not autoTreasure then
+        buscandoBau = false
+        ultimoAlvo = nil
+        ultimoPeixeY = nil
+    end
     atualizarBotao(botaoBau, "Auto Treasure", autoTreasure)
 end)
 local botaoVenda = criarBotao(abaFishing, "Auto Sell: OFF")
@@ -1489,7 +1520,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V8.4 | RightShift"
+rodape.Text = "PEGASUS HUB V8.6 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1710,7 +1741,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V8.4")
+print("PEGASUS HUB V8.6")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
