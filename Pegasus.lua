@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V10.3
+-- PEGASUS HUB V10.4
 -- Generic Voice Game
 --==================================================
 
@@ -41,12 +41,15 @@ local INTERVALO_MOUSE = 0.08
 -- Adicione novos locais nesta tabela
 --==================================================
 
+local arenaSpawn = Vector3.new(-118.484138, 3.577692, -0.066616)
+local arenaEntry = Vector3.new(-159.985001, 4.188278, 0)
 local Locations = {
     {
         Nome = "Topo Escada Espiral",
         Posicao = Vector3.new(170, 5100, 5)
     },
-    { Nome = "Lago", Posicao = Vector3.new(85.7377472, 3.1899991, 52.333786), Orientacao = CFrame.new(85.7377472, 3.1899991, 52.333786, -0.996407866, -7.94384434e-08, 0.0846837088, -8.35050216e-08, 1, -4.44786821e-08, -0.0846837088, -5.13904261e-08, -0.996407866) }
+    { Nome = "Lago", Posicao = Vector3.new(85.7377472, 3.1899991, 52.333786), Orientacao = CFrame.new(85.7377472, 3.1899991, 52.333786, -0.996407866, -7.94384434e-08, 0.0846837088, -8.35050216e-08, 1, -4.44786821e-08, -0.0846837088, -5.13904261e-08, -0.996407866) },
+    { Nome = "Arena", Posicao = arenaSpawn }
 }
 
 --==================================================
@@ -1438,7 +1441,10 @@ do
                     end
                     if not dentro(r.Position) then
 
-                        h:MoveTo(Vector3.new(zona.Position.X, 4.188278, zona.Position.Z))
+                        h:MoveTo(r.Position)
+                        r.AssemblyLinearVelocity = Vector3.zero
+                        r.AssemblyAngularVelocity = Vector3.zero
+                        r.CFrame = CFrame.new(arenaEntry)
                     else
                         local sword = c:FindFirstChild("EspadaArena")
                         local bag = Player:FindFirstChildOfClass("Backpack")
@@ -1643,7 +1649,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V10.3 | RightShift"
+rodape.Text = "PEGASUS HUB V10.4 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1839,7 +1845,7 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V10.3")
+print("PEGASUS HUB V10.4")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
