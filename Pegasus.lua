@@ -1,6 +1,6 @@
 
 --==================================================
--- PEGASUS HUB V10.0
+-- PEGASUS HUB V10.3
 -- Generic Voice Game
 --==================================================
 
@@ -1402,28 +1402,23 @@ criarInput(
     end
 )
 
--- ABA COMBAT: treinamento autorizado, somente NPCs marcados.
+-- ABA COMBAT: PvP autorizado, participacao autorizada pelo servidor.
 do
-    titulo(abaCombat, "Combat Training")
-    local botao = criarBotao(abaCombat, "Auto Battle [J]: OFF")
-    local status = descricao(abaCombat, "Desativado")
+    titulo(abaCombat, "Combat PvP")
+    local botao = criarBotao(abaCombat, "Auto PvP [J]: OFF")
     local delay = 0.35
-    criarInput(abaCombat, "Attack Delay (s)", delay, function(v)
-        delay = math.clamp(v, 0.35, 5)
-        return delay
-    end)
     local function alternar()
         if vendendo or vendaManual or flyAtivo then return end
         if not combateAtivo and ligado then alternarPesca() end
         combateAtivo = not combateAtivo
-        atualizarBotao(botao, "Auto Battle [J]", combateAtivo)
+        atualizarBotao(botao, "Auto PvP [J]", combateAtivo)
         if not combateAtivo then
             local _, h, r = obterPersonagem()
             if h and r then h:MoveTo(r.Position) end
-            status.Text = "Desativado"
+
         end
     end
-    atualizarBotao(botao, "Auto Battle [J]", false)
+    atualizarBotao(botao, "Auto PvP [J]", false)
     botao.MouseButton1Click:Connect(alternar)
     UserInputService.InputBegan:Connect(function(input, processed)
         if not processed and not UserInputService:GetFocusedTextBox() and input.KeyCode == Enum.KeyCode.J then alternar() end
@@ -1435,18 +1430,14 @@ do
                 local arena = workspace:FindFirstChild("ArenaDeEspadas")
                 local zona = arena and arena:FindFirstChild("Zona")
                 local c, h, r = obterPersonagem()
-                if not zona or not zona:IsA("BasePart") then
-                    status.Text = "Zona indisponivel"
-                elseif not h or not r or h.Health <= 0 then
-                    status.Text = "Aguardando respawn"
-                else
+                if zona and zona:IsA("BasePart") and h and r and h.Health > 0 then
                     local function dentro(p)
                         local q = zona.CFrame:PointToObjectSpace(p)
                         local b = zona.Size / 2
                         return math.abs(q.X)<=b.X and math.abs(q.Y)<=b.Y and math.abs(q.Z)<=b.Z
                     end
                     if not dentro(r.Position) then
-                        status.Text = "Entrando na arena"
+
                         h:MoveTo(Vector3.new(zona.Position.X, 4.188278, zona.Position.Z))
                     else
                         local sword = c:FindFirstChild("EspadaArena")
@@ -1454,8 +1445,9 @@ do
                         local tool = bag and bag:FindFirstChild("EspadaArena")
                         if not sword and tool and tool:IsA("Tool") then h:EquipTool(tool) end
                         local target, dist = nil, math.huge
-                        for _, npc in ipairs(workspace:GetDescendants()) do
-                            if npc:IsA("Model") and npc:GetAttribute("ArenaTrainingTarget") == true and not Players:GetPlayerFromCharacter(npc) then
+                        for _, adversario in ipairs(Players:GetPlayers()) do
+                            local npc = adversario.Character
+                            if adversario ~= Player and (adversario:GetAttribute("AutoBattleOptIn") == true or arena:GetAttribute("AutomatedPvPAllowed") == true) and npc then
                                 local nh = npc:FindFirstChildOfClass("Humanoid")
                                 local nr = npc:FindFirstChild("HumanoidRootPart")
                                 if nh and nr and nh.Health > 0 and dentro(nr.Position) then
@@ -1465,11 +1457,11 @@ do
                             end
                         end
                         if target then
-                            status.Text = "Treinando"
+
                             h:MoveTo(target.Position)
                             if dist <= 5 and sword and sword:IsA("Tool") and sword.Enabled then sword:Activate() end
                         else
-                            status.Text = "Aguardando NPC de treinamento"
+
                             h:MoveTo(r.Position)
                         end
                     end
@@ -1651,7 +1643,7 @@ rodape.Size = UDim2.new(1, 0, 0, 30)
 rodape.Position = UDim2.new(0, 0, 1, -30)
 rodape.BackgroundColor3 = CORES.painel
 rodape.BorderSizePixel = 0
-rodape.Text = "PEGASUS HUB V10.0 | RightShift"
+rodape.Text = "PEGASUS HUB V10.3 | RightShift"
 rodape.TextColor3 = CORES.cinza
 rodape.Font = Enum.Font.Gotham
 rodape.TextSize = 11
@@ -1847,11 +1839,11 @@ end)
 selecionarAba("General")
 
 print("======================================")
-print("PEGASUS HUB V10.0")
+print("PEGASUS HUB V10.3")
 print("Generic Voice Game")
 print("Script carregado!")
 print("K - Auto Fishing")
-print("J - Combat Training")
+print("J - Combat PvP")
 print("F - Fly")
 print("RightShift - Interface")
 print("======================================")
